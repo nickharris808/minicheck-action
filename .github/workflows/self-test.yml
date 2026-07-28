@@ -1,0 +1,92 @@
+name: self-test
+on:
+  push: {branches: [main]}
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install pytest
+      - run: python -m pytest tests/ -q
+
+  # Nothing is pre-installed: this exercises the action's own install path.
+  refuted-spec-must-fail-the-job:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write a broken spec
+        run: |
+          mkdir -p specs
+          cat > specs/mutex.spec.json <<'JSON'
+          {"fields":["a","b","lock"],"initial":{"a":0,"b":0,"lock":0},
+           "transitions":[{"label":"a_enter","when":{"a":0},"set":{"a":1,"lock":1}},
+                          {"label":"b_enter","when":{"b":0},"set":{"b":1,"lock":1}}],
+           "invariants":{"not_both":{"forbid":{"a":1,"b":1}}}}
+          JSON
+      - id: check
+        continue-on-error: true
+        uses: ./
+        with: {specs: "specs/*.spec.json"}
+      - name: The action must have failed and said REFUTED
+        run: |
+          test "${{ steps.check.outcome }}" = "failure" || { echo "::error::a refuted spec passed"; exit 1; }
+          test "${{ steps.check.outputs.verdict }}" = "REFUTED"
+          test "${{ steps.check.outputs.refuted }}" = "1"
+
+  proved-spec-must-pass:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p specs
+          cat > specs/ok.spec.json <<'JSON'
+          {"fields":["x"],"initial":{"x":0},
+           "transitions":[{"label":"t","when":{"x":0},"set":{"x":1}}],
+           "invariants":{"ok":{"forbid":{"x":5}}}}
+          JSON
+      - id: check
+        uses: ./
+        with: {specs: "specs/*.spec.json"}
+      - run: test "${{ steps.check.outputs.verdict }}" = "PROVED"
+
+  undetermined-must-fail-by-default:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p specs
+          cat > specs/unbounded.spec.json <<'JSON'
+          {"fields":["c"],"initial":{"c":0},
+           "transitions":[{"label":"inc","set":{"c":{"incr":1}}}],
+           "invariants":{"never_neg":{"forbid":{"c":-5}}}}
+          JSON
+      - id: strict
+        continue-on-error: true
+        uses: ./
+        with: {specs: "specs/*.spec.json", fail-on: undetermined}
+      - name: strict mode must refuse an unestablished spec
+        run: |
+          test "${{ steps.strict.outcome }}" = "failure"
+          test "${{ steps.strict.outputs.verdict }}" = "UNDETERMINED"
+      - id: lenient
+        uses: ./
+        with: {specs: "specs/*.spec.json", fail-on: refuted}
+      - run: test "${{ steps.lenient.outcome }}" = "success"
+
+  no-specs-must-exit-3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: none
+        continue-on-error: true
+        uses: ./
+        with: {specs: "does-not-exist/*.json"}
+      - name: A scan of nothing must not report success
+        run: |
+          test "${{ steps.none.outcome }}" = "failure"
+          test "${{ steps.none.outputs.verdict }}" = "ERROR"

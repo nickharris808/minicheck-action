@@ -1,0 +1,70 @@
+name: "minicheck"
+description: >
+  Model-check declarative state-machine specs in CI. Posts the counterexample as a diagram, uploads
+  SARIF to code scanning, and fails the job on a refutation — or on an undetermined search, because
+  "I could not tell" is not a pass.
+branding:
+  icon: "check-square"
+  color: "purple"
+inputs:
+  specs:
+    description: "Glob for spec files to check."
+    required: false
+    default: "**/*.spec.json"
+  fail-on:
+    description: >
+      Which verdicts fail the job. `refuted` fails only on a counterexample; `undetermined` (the
+      default) also fails when the search did not finish. Choosing `refuted` means you accept a
+      spec whose safety was never established.
+    required: false
+    default: "undetermined"
+  sarif-file:
+    description: "Where to write SARIF. Empty disables SARIF output."
+    required: false
+    default: "minicheck.sarif"
+  int-bound:
+    description: "Largest magnitude an integer field may take."
+    required: false
+    default: "64"
+  max-states:
+    description: "Stop after this many reachable states."
+    required: false
+    default: "200000"
+  summary:
+    description: "Write a job summary with a Mermaid diagram per counterexample."
+    required: false
+    default: "true"
+  minicheck-ref:
+    description: "Git ref of minicheck to install."
+    required: false
+    default: "main"
+outputs:
+  verdict:
+    description: "Aggregate verdict: PROVED, REFUTED, UNDETERMINED or ERROR."
+    value: ${{ steps.run.outputs.verdict }}
+  checked:
+    description: "How many spec files were checked."
+    value: ${{ steps.run.outputs.checked }}
+  refuted:
+    description: "How many specs had a counterexample."
+    value: ${{ steps.run.outputs.refuted }}
+  undetermined:
+    description: "How many specs could not be settled."
+    value: ${{ steps.run.outputs.undetermined }}
+  sarif-file:
+    description: "Path to the SARIF file, if one was written."
+    value: ${{ steps.run.outputs.sarif-file }}
+runs:
+  using: "composite"
+  steps:
+    - id: run
+      shell: bash
+      run: ${{ github.action_path }}/entrypoint.sh
+      env:
+        MC_SPECS: ${{ inputs.specs }}
+        MC_FAIL_ON: ${{ inputs.fail-on }}
+        MC_SARIF: ${{ inputs.sarif-file }}
+        MC_INT_BOUND: ${{ inputs.int-bound }}
+        MC_MAX_STATES: ${{ inputs.max-states }}
+        MC_SUMMARY: ${{ inputs.summary }}
+        MC_REF: ${{ inputs.minicheck-ref }}
