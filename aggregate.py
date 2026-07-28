@@ -50,7 +50,9 @@ def collect(results_dir: str):
         counts[verdict] += 1
 
         key = os.path.basename(path)[: -len(".json")]
-        rows.append({"spec": index.get(key, key), "verdict": verdict, "data": data, "key": key})
+        rows.append(
+            {"spec": index.get(key, key), "verdict": verdict, "data": data, "key": key}
+        )
 
         sarif_path = os.path.join(results_dir, key + ".sarif")
         if os.path.exists(sarif_path):
@@ -69,7 +71,9 @@ def aggregate(counts: dict) -> str:
     return "PROVED"
 
 
-def write_summary(path: str, rows: list, counts: dict, agg: str, results_dir: str) -> None:
+def write_summary(
+    path: str, rows: list, counts: dict, agg: str, results_dir: str
+) -> None:
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(f"### minicheck — {ICON.get(agg, '')} {agg}\n\n")
         fh.write("| spec | verdict | states | exhaustive |\n|---|---|---|---|\n")
@@ -92,7 +96,9 @@ def write_summary(path: str, rows: list, counts: dict, agg: str, results_dir: st
                 continue
             body = open(mmd, encoding="utf-8").read().strip()
             if body.startswith("stateDiagram"):
-                fh.write(f"\n<details><summary>Counterexample — <code>{row['spec']}</code></summary>\n\n")
+                fh.write(
+                    f"\n<details><summary>Counterexample — <code>{row['spec']}</code></summary>\n\n"
+                )
                 fh.write("```mermaid\n" + body + "\n```\n\n</details>\n")
 
 
@@ -107,7 +113,11 @@ def main() -> int:
 
     if sarif_out and merged:
         with open(sarif_out, "w", encoding="utf-8") as fh:
-            json.dump({"$schema": SARIF_SCHEMA, "version": "2.1.0", "runs": merged}, fh, indent=2)
+            json.dump(
+                {"$schema": SARIF_SCHEMA, "version": "2.1.0", "runs": merged},
+                fh,
+                indent=2,
+            )
         print(f"wrote SARIF for {len(merged)} run(s) to {sarif_out}")
 
     gh_out = os.environ.get("GITHUB_OUTPUT")

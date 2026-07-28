@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "minicheck-action"
+abstract: "Model-check state machine specs in CI, with counterexamples as diagrams and SARIF output"
+type: software
+authors:
+  - family-names: Harris
+    given-names: Nick
+repository-code: "https://github.com/nickharris808/minicheck-action"
+url: "https://nickharris808.github.io/verification-docs/"
+license: MIT
+keywords:
+  - formal methods
+  - model checking
+  - verification
