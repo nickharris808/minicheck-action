@@ -9,9 +9,15 @@
 # "everything is fine" about a repository it never examined.
 set -euo pipefail
 
-python -c "import minicheck" 2>/dev/null || \
-  python -m pip install --quiet --disable-pip-version-check \
-    "minicheck @ git+https://github.com/nickharris808/minicheck@${MC_REF:-main}"
+# `minicheck` is on PyPI, so the index is the fast path and needs no `git` on the runner.
+# An explicit `minicheck-ref:` means the caller wants a specific commit, which only the git form
+# can give them — so that input takes priority over the index.
+if ! python -c "import minicheck" 2>/dev/null; then
+  if [[ -n "${MC_REF:-}" ]] || ! python -m pip install --quiet --disable-pip-version-check "minicheck>=0.4"; then
+    python -m pip install --quiet --disable-pip-version-check \
+      "minicheck @ git+https://github.com/nickharris808/minicheck@${MC_REF:-main}"
+  fi
+fi
 
 SPECS_GLOB="${MC_SPECS:-**/*.spec.json}"
 

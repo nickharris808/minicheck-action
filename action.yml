@@ -35,9 +35,13 @@ inputs:
     required: false
     default: "true"
   minicheck-ref:
-    description: "Git ref of minicheck to install."
+    description: >-
+      Git ref of minicheck to install. Leave empty (the default) to install the
+      published PyPI release, which needs no git on the runner. Set it only to
+      pin a specific commit or branch; any non-empty value takes priority over
+      the index. An empty value still resolves to `main` if PyPI is unreachable.
     required: false
-    default: "main"
+    default: ""
 outputs:
   verdict:
     description: "Aggregate verdict: PROVED, REFUTED, UNDETERMINED or ERROR."

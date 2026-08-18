@@ -57,17 +57,12 @@ def test_aggregate_precedence(counts, expected):
 
 def test_one_undetermined_spec_sinks_an_otherwise_proved_run():
     """The case that would be tempting to round up, and must not be."""
-    assert (
-        aggregate({"PROVED": 99, "REFUTED": 0, "UNDETERMINED": 1, "ERROR": 0})
-        == "UNDETERMINED"
-    )
+    assert aggregate({"PROVED": 99, "REFUTED": 0, "UNDETERMINED": 1, "ERROR": 0}) == "UNDETERMINED"
 
 
 # ------------------------------------------------------------------------------ result collection
 def test_collect_reads_verdicts_and_resolves_names(tmp_path):
-    d = make_results(
-        tmp_path, {"a/mutex.spec.json": "REFUTED", "b/ok.spec.json": "PROVED"}
-    )
+    d = make_results(tmp_path, {"a/mutex.spec.json": "REFUTED", "b/ok.spec.json": "PROVED"})
     rows, _merged, counts = collect(d)
     assert counts["REFUTED"] == 1 and counts["PROVED"] == 1
     assert {r["spec"] for r in rows} == {"a/mutex.spec.json", "b/ok.spec.json"}
@@ -97,9 +92,7 @@ def test_a_bad_spec_verdict_is_normalised_to_error(tmp_path):
 
 def test_an_unknown_verdict_string_is_treated_as_an_error(tmp_path):
     """Anything the action does not understand must not be optimistically ignored."""
-    d = make_results(
-        tmp_path, {"x.spec.json": {"ok": True, "verdict": "SOMETHING_NEW"}}
-    )
+    d = make_results(tmp_path, {"x.spec.json": {"ok": True, "verdict": "SOMETHING_NEW"}})
     _rows, _m, counts = collect(d)
     assert counts["ERROR"] == 1
 
@@ -164,9 +157,7 @@ def test_fail_on_refuted_still_fails_on_a_refutation(tmp_path):
 
 def test_fail_on_refuted_still_fails_on_an_error(tmp_path):
     (tmp_path / "e").mkdir()
-    d = make_results(
-        tmp_path / "e", {"a.spec.json": {"ok": False, "verdict": "BAD_SPEC"}}
-    )
+    d = make_results(tmp_path / "e", {"a.spec.json": {"ok": False, "verdict": "BAD_SPEC"}})
     code, _ = run_main(d, tmp_path, MC_FAIL_ON="refuted")
     assert code == 1
 

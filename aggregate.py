@@ -50,9 +50,7 @@ def collect(results_dir: str):
         counts[verdict] += 1
 
         key = os.path.basename(path)[: -len(".json")]
-        rows.append(
-            {"spec": index.get(key, key), "verdict": verdict, "data": data, "key": key}
-        )
+        rows.append({"spec": index.get(key, key), "verdict": verdict, "data": data, "key": key})
 
         sarif_path = os.path.join(results_dir, key + ".sarif")
         if os.path.exists(sarif_path):
@@ -71,9 +69,7 @@ def aggregate(counts: dict) -> str:
     return "PROVED"
 
 
-def write_summary(
-    path: str, rows: list, counts: dict, agg: str, results_dir: str
-) -> None:
+def write_summary(path: str, rows: list, counts: dict, agg: str, results_dir: str) -> None:
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(f"### minicheck — {ICON.get(agg, '')} {agg}\n\n")
         fh.write("| spec | verdict | states | exhaustive |\n|---|---|---|---|\n")
@@ -96,9 +92,7 @@ def write_summary(
                 continue
             body = open(mmd, encoding="utf-8").read().strip()
             if body.startswith("stateDiagram"):
-                fh.write(
-                    f"\n<details><summary>Counterexample — <code>{row['spec']}</code></summary>\n\n"
-                )
+                fh.write(f"\n<details><summary>Counterexample — <code>{row['spec']}</code></summary>\n\n")
                 fh.write("```mermaid\n" + body + "\n```\n\n</details>\n")
 
 

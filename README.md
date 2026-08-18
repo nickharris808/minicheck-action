@@ -21,26 +21,96 @@ interleaving nobody imagined ships.
 This makes the check a step in a workflow file. The model lives next to the code, it runs on every
 push, and when it breaks the PR shows you *how* — with a picture rather than a paragraph.
 
+## Install
+
+There is nothing to `pip install`. Reference the Action from a workflow and it installs its own
+dependency on first run:
+
 ```yaml
 - uses: nickharris808/minicheck-action@v1
   with:
     specs: "specs/**/*.spec.json"
 ```
 
+The Action is a **composite** action — it runs `bash` on the runner, so it needs `python` on `PATH`
+(every `ubuntu-latest` image has it) and no container. It installs
+[`minicheck`](https://pypi.org/project/minicheck/) from PyPI, falling back to a `git+` install if the
+index is unreachable, and skips the install entirely when `minicheck` is already importable. Set
+`minicheck-ref:` to force the `git+` path at a chosen ref.
+
+## 30-second quickstart
+
+Two specs, one that holds and one that does not. Everything below is the **real output** of the
+Action's own `entrypoint.sh`, run locally with `GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY` pointed at
+files.
+
+```console
+$ minicheck example > specs/mutex.spec.json
+$ cat > specs/all_safe_here.spec.json <<'EOF'
+{"name": "safe", "fields": ["n"], "initial": {"n": 0},
+ "transitions": [{"label": "tick", "when": {"n": 0}, "set": {"n": 1}}],
+ "invariants": {"n_small": {"forbid": {"n": 2}}}}
+EOF
+$ MC_SPECS='specs/**/*.spec.json' ./entrypoint.sh
+checking 2 spec file(s)
+wrote SARIF for 2 run(s) to minicheck.sarif
+verdict: REFUTED  (checked 2: {'PROVED': 1, 'REFUTED': 1, 'UNDETERMINED': 0, 'ERROR': 0})
+$ echo $?
+1
+$ cat "$GITHUB_OUTPUT"
+verdict=REFUTED
+checked=2
+refuted=1
+undetermined=0
+sarif-file=minicheck.sarif
+```
+
+Point it at a glob that matches nothing and it refuses rather than reporting green:
+
+```console
+$ MC_SPECS='nope/**/*.spec.json' ./entrypoint.sh
+::error::no spec files matched nope/**/*.spec.json. Refusing to report success for a repository that was never checked.
+$ echo $?
+3
+```
+
 ## What you get
 
 A job summary with a row per spec and a **Mermaid diagram of every counterexample**, which GitHub
-draws inline:
+draws inline. This is the real `GITHUB_STEP_SUMMARY` from the run above:
 
 > ### minicheck — ❌ REFUTED
 >
 > | spec | verdict | states | exhaustive |
 > |---|---|---|---|
 > | `specs/all_safe_here.spec.json` | ✅ PROVED | 2 | yes |
-> | `specs/mutex.spec.json` | ❌ REFUTED | 4 | yes |
+> | `specs/mutex.spec.json` | ❌ REFUTED | 6 | yes |
+>
+> <details><summary>Counterexample — <code>specs/mutex.spec.json</code></summary>
+>
+> ```
+> stateDiagram-v2
+>     %% verdict: REFUTED
+>     [*] --> S0
+>     S0 : a=0, b=0, lock=0
+>     S1 : a=1, b=0, lock=1
+>     S3 : a=1, b=1, lock=1
+>     S0 --> S1 : 1. a_enter
+>     S1 --> S3 : 2. b_enter
+>     class S0 cex
+>     class S1 cex
+>     class S3 cex
+>     classDef cex fill:#fdd,stroke:#c00,stroke-width:2px
+> ```
+>
+> </details>
 
-…plus a collapsible diagram under each refutation, and a SARIF file you can hand to
-`github/codeql-action/upload-sarif` so the finding lands in the **Security** tab.
+(The diagram above is abridged — the real one also carries the non-counterexample states and edges,
+so you can see the paths *not* taken. The numbered `1.`/`2.` edges and the `cex` classes are the
+counterexample.)
+
+…plus a SARIF file you can hand to `github/codeql-action/upload-sarif` so the finding lands in the
+**Security** tab.
 
 ## The verdict is three-valued, and that changes the default
 
@@ -142,6 +212,99 @@ your spec, not your implementation.
 **What it does not do.** It does not extract specs from your code, it does not check liveness unless
 the spec declares a `goal`, and it cannot verify anything outside `int-bound` or `max-states` —
 exceeding either yields `UNDETERMINED`, never a quiet pass.
+
+**It cannot audit the spec you wrote.** A spec whose invariant is trivially satisfied will show
+`PROVED`, because it genuinely is — it just verifies nothing. `minicheck` emits a warning for that
+case; read the log, not only the badge.
+
+**Failing is best-effort in exactly two places, deliberately.** Rendering a diagram and writing SARIF
+are per-file and non-fatal: a spec too large to draw must not turn a real verdict into a build error.
+The verdict itself is never best-effort.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | every spec met the configured threshold |
+| `1` | at least one did not |
+| `3` | **misconfigured** — no spec matched the glob. A scan of nothing never reports success. |
+
+## Troubleshooting
+
+**The job fails with `exit 3` and `no spec files matched`.** The glob matched nothing. Globs are
+expanded by the Action in Python with `recursive=True`, relative to the workspace root — so
+`specs/**/*.spec.json` is right and `./specs/**.spec.json` is not. Run
+`python -c "import glob; print(glob.glob('YOUR_GLOB', recursive=True))"` locally to check it.
+
+**Everything is `UNDETERMINED` and I did not change the specs.** A field grows past `int-bound`
+(default 64) or the space passed `max-states` (default 200000). The log names which, per spec. Raise
+the bound or add a `when` guard that stops the growth. Do **not** reach for `fail-on: refuted` to
+silence it — that accepts unestablished specs across the board, not just this one.
+
+**The SARIF upload step is skipped.** `github/codeql-action/upload-sarif` only runs if the Action
+step ran, and a failing step stops the job. Add `continue-on-error: true` to the check step and
+re-impose the gate afterwards — the [full example](#full-example-with-code-scanning) does exactly
+that.
+
+**`Resource not accessible by integration` on the SARIF upload.** The workflow needs
+`permissions: security-events: write`. It is not granted by default.
+
+**A refuted spec produced no diagram.** Rendering is refused above `--max-nodes` (default 60) because
+a hairball is not a diagram. The verdict, the state count and the SARIF entry are all still there.
+
+**The verdict is worse than any single spec looks.** The run's verdict is the worst of its specs:
+**ERROR > REFUTED > UNDETERMINED > PROVED**. One undetermined spec among a hundred proved ones makes
+the run undetermined.
+
+**It reinstalls `minicheck` on every run.** It does not — the entrypoint tries `import minicheck`
+first and installs only if that fails. If you cache it or pre-install it in an earlier step, the
+Action uses yours.
+
+## FAQ
+
+**"Why does `UNDETERMINED` fail my build? Nothing was found."**
+Nothing was *looked at*, which is different. The search stopped before covering the space, so no
+invariant was established. A gate that treats "I could not tell" as success is worse than no gate,
+because it looks like evidence. `fail-on: refuted` is there if you want to accept that — the point is
+that it becomes a line in your workflow file rather than a default someone chose for you.
+
+**"Isn't `fail-on: refuted` an escape hatch that defeats the point?"**
+It widens only the undetermined case. A counterexample still fails the build under either setting. A
+flag meaning "I accept not knowing" must not also mean "I accept known-broken".
+
+**"Why not just use SPIN or TLC in CI?"**
+For a model that has outgrown this, do. `minicheck` exports to both — `--format promela` and
+`--format tla` — precisely so that adopting this does not strand you. This Action exists for the
+invariant you would otherwise not check at all, because setting up a real toolchain was more work
+than the check was worth.
+
+**"Can it check my code, or do I have to write a separate model?"**
+You write the model. It does not extract specs from source, and that limitation is load-bearing
+rather than a roadmap item: the abstraction is the part a human has to get right, and a tool that
+guessed it would produce confident verdicts about the wrong system.
+
+**"Why is a green run not proof that my system is correct?"**
+Because it is proof about the *spec*. A model abstracts, and an abstraction can hide a real defect.
+The useful reading of a green run is "the interleavings I described cannot reach the state I
+forbade" — which is a real and checkable thing, and less than "my system is correct".
+
+**"The `v1` tag — is it moving?"**
+`v1` tracks the latest v1.x. Pin the full SHA if you need byte-stability, which is the normal advice
+for any third-party Action.
+
+## Tests
+
+```
+pip install "minicheck @ git+https://github.com/nickharris808/minicheck.git" pytest && pytest
+```
+
+20 tests over `aggregate.py` — verdict precedence, the summary renderer, SARIF shaping, and the
+index-file mapping that stops a spec path containing `_` from being silently renamed in the report.
+
+On top of those, the [self-test workflow](.github/workflows/self-test.yml) runs the **whole Action**
+on every push in four jobs: the unit tests, a refuted spec that **must fail** the job, a proved spec
+that **must pass**, and an undetermined spec that **must fail by default**. If the gate ever stops
+gating, the build goes red.
 
 ## The portfolio
 
