@@ -11,7 +11,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install pytest
+      # tests/test_install_path.py reads action.yml with PyYAML. The workflow installed only
+      # pytest, so the module errored on import and this job has been red since 2026-08-18.
+      - run: pip install pytest pyyaml
       - run: python -m pytest tests/ -q
 
   # Nothing is pre-installed: this exercises the action's own install path.
